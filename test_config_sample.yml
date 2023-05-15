@@ -1,0 +1,106 @@
+aws_profile: [profile]
+app: demo-lambda-test
+region: ap-northeast-2
+# roleArn: arn:aws:iam::1234567810:role/demo-iam-role-s3-fullaccess
+env:
+  - test1:
+      key: test_value
+      value: my_test
+claimsProfiles:
+  test1:
+    email: tt1
+    sub: tt2
+  test2:
+    email: tt2
+    sub: tt3
+test_targets:
+  - uri: s3/get.js
+    eventType: http
+    description: bucket list output
+    method: get
+    parms:
+      email: chris.park@reconlabs.kr
+      company_name: reconlabs
+      type: test
+    expect:
+      checkType: check_200
+  # expect case, 반환 값이 {data:{t1 : 1,t2: 2}} 형식인지 확인
+  - uri: exp.js
+    eventType: http
+    description: bucket list output
+    method: get
+    expect:
+      checkType: check_value
+      target:
+        data:
+          t1: 1
+          t2: 2
+  # fail case, 반환 값중 data.t2가 3으로 예상하지만 실제로는 2를 반환하기에 실패
+  - uri: exp.js
+    eventType: http
+    description: bucket list output
+    method: get
+    expect:
+      checkType: check_value
+      target:
+        data:
+          t1: 1
+          t2: 3
+  # not fail case, 반환 값중 data.t2가 3으로 예상하지만 실제로는 2를 반환해도 not이 활성화 되어있어서 성공
+  - uri: exp.js
+    eventType: http
+    description: bucket list output
+    method: get
+    expect:
+      not: true
+      checkType: check_value
+      target:
+        data:
+          t1: 1
+          t2: 3
+  # not case, 즉 status code가 200이 아니어야 한다.
+  - uri: exp.js
+    eventType: http
+    description: bucket list output
+    method: get
+    parms:
+      fail: true
+    expect:
+      not: true
+      checkType: check_200
+  # 결과 값 저장: 결과 값의 data.t1 경로의 값을 "bb" 로 저장, 이후 @bb로 사용 가능
+  - uri: exp.js
+    eventType: http
+    description: bucket list output
+    method: get
+    expect:
+      checkType: check_200
+    saveValue:
+      - path: data.t1
+        saveas: bb
+  #이전 테스트에서 저장한 값 "bb"를 parm에 test 에 해당하는 값으로 넣기(@bb)
+  - uri: exp.js
+    eventType: http
+    description: bucket list output
+    method: get
+    expect:
+      checkType: check_200
+    parms:
+      test: "@bb"
+  #맨 처음에 지정한 claimsProfile중 test1을 사용
+  - uri: exp.js
+    eventType: http
+    description: bucket list output
+    method: get
+    claimsProfile: test1
+    expect:
+      checkType: check_200
+  #header
+  - uri: exp.js
+    eventType: http
+    description: header
+    method: get
+    headers:
+      Authorization: test1234
+    expect:
+      checkType: check_200
