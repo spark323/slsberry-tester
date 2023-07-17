@@ -202,8 +202,11 @@ function test(configFilePath = 'test_config.yml', lambdaPath = "/src/lambda/") {
             const authorizer_token = getValue(item.token)
             authorizer_result = authorizer && useAuthorizer ? await handleAuthorizer(authorizer, authorizer_token) : authorizer_result
 
+
+            const givenParams = item.params ? item.params : item.parms
+
             let input = {
-                queryStringParameters: item.parms, body: JSON.stringify(item.parms),
+                queryStringParameters: givenParams, body: JSON.stringify(givenParams),
                 requestContext:
                 {
                     authorizer: {
@@ -218,13 +221,13 @@ function test(configFilePath = 'test_config.yml', lambdaPath = "/src/lambda/") {
                 ...item
             }
 
-            if (item.parms) {
-                if (typeof item.parms == 'string') {
-                    input.queryStringParameters = item.parms
+            if (givenParams) {
+                if (typeof givenParams == 'string') {
+                    input.queryStringParameters = givenParams
 
                 } else {
-                    for (var propert in item.parms) {
-                        let customObject = item.parms[propert];
+                    for (var propert in givenParams) {
+                        let customObject = givenParams[propert];
                         let val = "";
                         let key = "";
 
