@@ -1,7 +1,7 @@
 'use strict';
 const YAML = require('yaml')
 const fs = require('fs')
-const AWS = require('aws-sdk');
+
 var appRoot = require('app-root-path');
 const lambdaWrapper = require('lambda-wrapper');
 const JSON5 = require('json5');
@@ -149,27 +149,32 @@ function test(configFilePath = 'test_config.yml', lambdaPath = "/src/lambda/") {
 
         try {
             jest.setTimeout(testDirection.timeout ? testDirection.timeout : 20000);
-            var credentials = new AWS.SharedIniFileCredentials({ profile: testDirection.aws_profile });
-            AWS.config.credentials = credentials;
+
+            if (!testDirection.useAWSSDKV3) {
+                const AWS = require('aws-sdk');
+                var credentials = new AWS.SharedIniFileCredentials({ profile: testDirection.aws_profile });
+                AWS.config.credentials = credentials;
 
 
-            if (testDirection.roleArn) {
-                const sts = new AWS.STS();
-                const timestamp = (new Date()).getTime();
-                const params = {
-                    RoleArn: testDirection.roleArn, RoleSessionName: `rw-lambda-tester-${timestamp}`
-                };
-                const data = await sts.assumeRole(params).promise();
-                AWS.config.update({
-                    accessKeyId: data.Credentials.AccessKeyId,
-                    secretAccessKey: data.Credentials.SecretAccessKey,
-                    sessionToken: data.Credentials.SessionToken,
-                });
+
+                if (testDirection.roleArn) {
+                    const sts = new AWS.STS();
+                    const timestamp = (new Date()).getTime();
+                    const params = {
+                        RoleArn: testDirection.roleArn, RoleSessionName: `rw-lambda-tester-${timestamp}`
+                    };
+                    const data = await sts.assumeRole(params).promise();
+                    AWS.config.update({
+                        accessKeyId: data.Credentials.AccessKeyId,
+                        secretAccessKey: data.Credentials.SecretAccessKey,
+                        sessionToken: data.Credentials.SessionToken,
+                    });
+                }
+                AWS.config.update({ region: testDirection.region });
             }
 
-
             process.env.region = testDirection.region;
-            AWS.config.update({ region: testDirection.region });
+
             //환경 변수 설정
             if (Array.isArray(testDirection.env)) {
                 testDirection.env.forEach((item, index) => {
@@ -218,6 +223,19 @@ function test(configFilePath = 'test_config.yml', lambdaPath = "/src/lambda/") {
                         lambda: authorizer_result
                     }
                 },
+                v3TestProfile: testDirection.useAWSSDKV3 ?
+
+                    (testDirection.roleArn) ?
+                        require("@aws-sdk/credential-providers").fromTemporaryCredentials({
+                            masterCredentials: (testDirection.aws_profile) ? require("@aws-sdk/credential-provider-ini").fromIni({ profile: testDirection.aws_profile }) : undefined,
+                            params: {
+                                RoleArn: testDirection.roleArn,
+                            }
+                        }
+                        ) : require("@aws-sdk/credential-provider-ini").fromIni({ profile: testDirection.aws_profile })
+
+                    : undefined,
+
                 ...item
             }
 
