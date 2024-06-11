@@ -127,7 +127,7 @@ expect.extend({
         } else {
             return {
                 message: () =>
-                    `expected:${response.statusCode},received: ${value}, response:${(response.body)} `,
+                    `expected:${value},received: ${response.statusCode}, response:${(response.body)} `,
                 pass: false,
             };
         }
