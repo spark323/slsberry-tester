@@ -1,4 +1,6 @@
 'use strict';
+const cProvider = require('@aws-sdk/credential-providers');
+const cProviderIni = require('@aws-sdk/credential-provider-ini');
 const YAML = require('yaml')
 const fs = require('fs')
 
@@ -127,7 +129,7 @@ expect.extend({
         } else {
             return {
                 message: () =>
-                    `expected:${value},received: ${response.statusCode}, response:${(response.body)} `,
+                    `expected:${response.statusCode},received: ${value}, response:${(response.body)} `,
                 pass: false,
             };
         }
@@ -137,66 +139,68 @@ expect.extend({
     }
 
 });
-
-function test(configFilePath = 'test_config.yml', lambdaPath = "/src/lambda/") {
+async function readMods(configFilePath = 'test_config.yml', lambdaPath = "/src/lambda/", os = "windows") {
     process.env.testing = true;
     var test_config = fs.readFileSync(configFilePath, 'utf8')
     const testDirection = YAML.parse(test_config);
     // authorizer 설정
-    const authorizer = testDirection.authorizer ? require(appRoot + lambdaPath + testDirection.authorizer) : null
+    const _authPath = appRoot + lambdaPath + testDirection.authorizer;
+
+    const authPath = (((os.toString().toLowerCase().includes("windows")) ? `file://${_authPath}` : _authPath)).replace(/\\/g, '/');
+    const authorizer = testDirection.authorizer ? await import(authPath) : null
+
+    try {
+        process.env.region = testDirection.region;
+        //환경 변수 설정
+        if (Array.isArray(testDirection.env)) {
+            testDirection.env.forEach((item, index) => {
+                process.env[item.key] = item.value;
+            });
+        }
+        else {
+            for (var props in testDirection.env) {
+                process.env[props] = testDirection.env[props];
+            }
+        }
+    } catch (e) {
+        console.log(e);
+        process.exit("could not assume the role:" + testDirection.roleArn)
+    }
+    let modArr = [];
+    for (const item of testDirection.test_targets) {
+        const eventType = item.eventType ? item.eventType : 'http';
+        const _path = appRoot + lambdaPath + item.uri;
+
+        const path = (((os.toString().toLowerCase().includes("windows")) ? `file://${_path}` : _path)).replace(/\\/g, '/');
+        console.log(path);
+        const mod = await import(path);
+        console.log(mod.apiSpec)
+        modArr.push(mod);
+
+    }
+    return { modArr, authorizer }
+}
+async function test(configFilePath = 'test_config.yml', modArr, authorizer, lambdaPath = "/src/lambda/", os = "windows") {
+    process.env.testing = true;
+    var test_config = fs.readFileSync(configFilePath, 'utf8')
+    const testDirection = YAML.parse(test_config);
     beforeAll(async () => {
         //기본 설정
+        jest.setTimeout(testDirection.timeout ? testDirection.timeout : 20000);
 
-        try {
-            jest.setTimeout(testDirection.timeout ? testDirection.timeout : 20000);
-
-            if (!testDirection.useAWSSDKV3) {
-                const AWS = require('aws-sdk');
-                var credentials = new AWS.SharedIniFileCredentials({ profile: testDirection.aws_profile });
-                AWS.config.credentials = credentials;
-
-
-
-                if (testDirection.roleArn) {
-                    const sts = new AWS.STS();
-                    const timestamp = (new Date()).getTime();
-                    const params = {
-                        RoleArn: testDirection.roleArn, RoleSessionName: `rw-lambda-tester-${timestamp}`
-                    };
-                    const data = await sts.assumeRole(params).promise();
-                    AWS.config.update({
-                        accessKeyId: data.Credentials.AccessKeyId,
-                        secretAccessKey: data.Credentials.SecretAccessKey,
-                        sessionToken: data.Credentials.SessionToken,
-                    });
-                }
-                AWS.config.update({ region: testDirection.region });
-            }
-
-            process.env.region = testDirection.region;
-
-            //환경 변수 설정
-            if (Array.isArray(testDirection.env)) {
-                testDirection.env.forEach((item, index) => {
-                    process.env[item.key] = item.value;
-                });
-            }
-            else {
-                for (var props in testDirection.env) {
-                    process.env[props] = testDirection.env[props];
-                }
-            }
-        } catch (e) {
-            console.log(e);
-            process.exit("could not assume the role:" + testDirection.roleArn)
-        }
     });
 
-    testDirection.test_targets.forEach((item, index) => {
+
+
+
+
+    let idx = 0;
+    //jest.useFakeTimers();
+    for (const item of testDirection.test_targets) {
         //method에 따른 input 설정
         //queryStringParameters,body에 둘다 넣는다. 
         let eventType = item.eventType ? item.eventType : "http";
-        const mod = require(appRoot + lambdaPath + item.uri);
+        const mod = modArr[idx++];
 
         const wrapped = lambdaWrapper.wrap(mod, { handler: 'handler' });
 
@@ -226,13 +230,13 @@ function test(configFilePath = 'test_config.yml', lambdaPath = "/src/lambda/") {
                 v3TestProfile: testDirection.useAWSSDKV3 ?
 
                     (testDirection.roleArn) ?
-                        require("@aws-sdk/credential-providers").fromTemporaryCredentials({
-                            masterCredentials: (testDirection.aws_profile) ? require("@aws-sdk/credential-provider-ini").fromIni({ profile: testDirection.aws_profile }) : undefined,
+                        cProvider.fromTemporaryCredentials({
+                            masterCredentials: (testDirection.aws_profile) ? cProviderIni.fromIni({ profile: testDirection.aws_profile }) : undefined,
                             params: {
                                 RoleArn: testDirection.roleArn,
                             }
                         }
-                        ) : require("@aws-sdk/credential-provider-ini").fromIni({ profile: testDirection.aws_profile })
+                        ) : cProviderIni.fromIni({ profile: testDirection.aws_profile })
 
                     : undefined,
 
@@ -309,6 +313,12 @@ function test(configFilePath = 'test_config.yml', lambdaPath = "/src/lambda/") {
                 }
             })
         });
-    });
+    }
+
+
+
+
 }
 module.exports.test = test;
+module.exports.readMods = readMods;
+
