@@ -261,7 +261,8 @@ async function test(configFilePath = 'test_config.yml', modArr, authorizer, lamb
 
                             inputObject[propert] = val;
 
-                            input.body = inputObject;
+
+                            input.body = JSON.stringify(inputObject);
                         }
                         if (input.queryStringParameters) {
                             input.queryStringParameters[propert] = val;
