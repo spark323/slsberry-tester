@@ -261,13 +261,14 @@ async function test(configFilePath = 'test_config.yml', modArr, authorizer, lamb
 
                             inputObject[propert] = val;
 
-                            input.body = JSON.stringify(inputObject);
+                            input.body = inputObject;
                         }
                         if (input.queryStringParameters) {
                             input.queryStringParameters[propert] = val;
                         }
 
                     }
+                    input.body = JSON5.parse(input.body)
                 }
             }
             if (item.headers) {
